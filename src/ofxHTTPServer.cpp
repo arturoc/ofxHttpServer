@@ -106,11 +106,14 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 		cout << ", "  << key << endl;//": " <<data << endl;
 
 		if(!filename){
-			char * aux_data = new char[size+1];
-			memset(aux_data,0,size+1);
-			memcpy(aux_data,data,size);
-			con_info->fields[key] = aux_data;
-		}else{
+		 char * aux_data = new char[off+size+1];
+		 memset(aux_data,0,size+1);
+		 if(off > 0)
+			memcpy(aux_data,con_info->fields[key].c_str(),off);
+
+		 memcpy(aux_data+off*sizeof(char),data,size);
+		 con_info->fields[key] = aux_data;
+	  }else{
 			if(con_info->file_fields.find(filename)==con_info->file_fields.end()){
 				con_info->file_fields[filename] = NULL;
 				con_info->file_fields[filename] = fopen ((instance.uploadDir +"/"+ filename).c_str(), "ab");
