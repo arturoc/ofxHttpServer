@@ -1,0 +1,37 @@
+<install>
+
+	<version>0.01</version>
+	<author>arturo castro</author>
+	<url></url>
+
+	<add>
+
+		<!-- 	=====================================================================	-->
+		<!--	========================== add per project using this addon =========	-->
+		<!-- 	=====================================================================	-->
+
+		<src>
+			<folder name="addons/ofxHttpServer/src">						
+				<file>../../../addons/ofxHttpServer/src/ofxHttpServer.h</file>
+				<file>../../../addons/ofxHttpServer/src/ofxHttpServer.cpp</file>
+			</folder>
+		</src>
+
+		<include>
+			<path>../../../addons/ofxHttpServer/src</path>
+			<path>../../../addons/ofxHttpServer/libs/microhttpd/include</path>
+		</include>
+		
+
+		<link>
+			<lib os="win32" compiler="codeblocks">../../../addons/ofxHttpServer/libs/microhttpd/lib/win32/libmicrohttpd.a</lib>
+			<lib os="win32" compiler="codeblocks">../../../addons/ofxHttpServer/libs/microhttpd/lib/win32/libmicrohttpd.dll.a</lib>
+			<lib os="mac"   compiler="xcode">../../../addons/ofxHttpServer/libs/microhttpd/lib/osx/libmicrohttpd.a</lib>
+			<lib os="linux" compiler="codeblocks, makefile">../../../addons/ofxHttpServer/libs/microhttpd/lib/linux/libmicrohttpd.a</lib>
+			<lib os="linux64" compiler="codeblocks, makefile">../../../addons/ofxHttpServer/libs/microhttpd/lib/linux64/libmicrohttpd.a</lib>
+		</link>
+		
+	</add>
+	
+	
+</install>
