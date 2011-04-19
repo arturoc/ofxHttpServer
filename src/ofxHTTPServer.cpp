@@ -30,6 +30,7 @@ public:
 
 	map<string,string> fields;
 	map<string,FILE*> file_fields;
+	map<string,string> file_to_key_index;
 	int connectiontype;
 	bool connection_complete;
 	struct MHD_PostProcessor *postprocessor;
@@ -37,44 +38,6 @@ public:
 	char new_content_type[1024];
 
 };
-
-class fs_file{
-public:
-	fs_file(){
-		buffer = NULL;
-		length = -1;
-	}
-
-	~fs_file(){
-		//if(buffer) delete[] buffer;
-	}
-	char * buffer;
-	long length;
-};
-
-// helper functions
-
-static fs_file getFileContent(const string & path){
-	fs_file file;
-
-	ifstream indata; // indata is like cin
-	indata.open( path.c_str() ); // opens the file
-	if(!indata) return file;
-
-
-	indata.seekg (0, ios::end);
-	file.length = indata.tellg();
-	indata.seekg (0, ios::beg);
-
-	// allocate memory:
-	file.buffer = new char [file.length];
-
-	// read data as a block:
-	indata.read (file.buffer,file.length);
-	indata.close();
-
-	return file;
-}
 
 int connection_info::id=0;
 
@@ -121,6 +84,8 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 					con_info->file_fields.erase(filename);
 					return MHD_NO;
 				}
+				con_info->file_to_key_index[filename]=key;
+
 			}
 			if(size>0){
 				if (!fwrite (data, size, sizeof(char), con_info->file_fields[filename])){
@@ -220,15 +185,10 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 
 		if (instance.numClients >= instance.maxClients){
-			fs_file file;
-			file = getFileContent("503.html");
-			if(!file.buffer){
-				file.buffer = new char[100];
-				strcpy(file.buffer, "error 503 - server too busy");
-				file.length = strlen(file.buffer);
-			}
-			cout << "httpServer: error max clients"<<endl;
-		    return send_page(connection, file.length, file.buffer, MHD_HTTP_SERVICE_UNAVAILABLE);
+			ofFile file503("503.html");
+			ofBuffer buf;
+			file503 >> buf;
+			return send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_SERVICE_UNAVAILABLE);
 		}
 
 		if(strmethod=="GET"){
@@ -268,8 +228,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		if(strmethod=="GET"){
 			ofNotifyEvent(instance.getEvent,response);
-
-			ret = send_page(connection, response.response.size(), response.response.c_str(), MHD_HTTP_OK);
+			ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
 		}else if (strmethod=="POST"){
 			connection_info *con_info = (connection_info *)*con_cls;
 
@@ -280,17 +239,21 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			}else{
 				cout << "upload_data_size =  0" << endl;
 				response.requestFields = con_info->fields;
+				map<string,string>::iterator it_f;
+				for(it_f=con_info->fields.begin();it_f!=con_info->fields.end();it_f++){
+					cout << it_f->first << ", " << it_f->second;
+				}
 				map<string,FILE*>::iterator it;
-				  for(it=con_info->file_fields.begin();it!=con_info->file_fields.end();it++){
+				for(it=con_info->file_fields.begin();it!=con_info->file_fields.end();it++){
 					  if(it->second!=NULL){
 						  fflush(it->second);
 						  fclose(it->second);
-						  response.uploadedFiles.push_back(it->first);
+						  response.uploadedFiles[con_info->file_to_key_index[it->first]]=it->first;
 					  }
-				  }
+				}
 				ofNotifyEvent(instance.postEvent,response);
 
-				ret = send_page(connection, response.response.size(), response.response.c_str(), MHD_HTTP_OK);
+				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
 			}
 
 		}
@@ -299,24 +262,19 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 	}else{
 		cout << method << " serving from filesystem: " << url << endl;
 
-		fs_file file;
-
-		file = getFileContent(instance.fsRoot + url);
-
-		if(!file.buffer) { // file couldn't be opened
+		ofFile file(instance.fsRoot + url,ofFile::ReadOnly,true);
+		if(!file.exists()){
 			cerr << "Error: file could not be opened trying to serve 404.html" << endl;
-			file = getFileContent(ofToDataPath("404.html", true));
-			if(!file.buffer){
-				file.buffer = new char[100];
-				strcpy(file.buffer, "error 404 - page not found");
-				file.length = strlen(file.buffer);
-			}
-			ret = send_page(connection, file.length, file.buffer, MHD_HTTP_NOT_FOUND);
+			ofFile file404("404.html");
+			ofBuffer buf;
+			file404 >> buf;
+			send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_NOT_FOUND);
 		}else{
-			ret = send_page(connection, file.length, file.buffer, MHD_HTTP_OK);
+			ofBuffer buf;
+			file >> buf;
+			cout << "response: file " << instance.fsRoot << url << " of size " << buf.size() << endl;
+			ret = send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_OK);
 		}
-
-		if(file.buffer)	delete[] file.buffer;
 	}
 
 	return ret;
@@ -337,13 +295,15 @@ void ofxHTTPServer::stop(){
 
 void ofxHTTPServer::setServerRoot(const string & fsroot){
 	fsRoot = ofToDataPath(fsroot,true);
-	cout << "serving files at " << fsRoot << endl;
+	ofDirectory(fsRoot).create();
+	ofLog(OF_LOG_NOTICE, "serving files at " + fsRoot );
 }
 
 
 void ofxHTTPServer::setUploadDir(const string & uploaddir){
 	uploadDir = ofToDataPath(uploaddir,true);
-	cout << "uploading posted files to " << uploadDir << endl;
+	ofDirectory(uploadDir).create();
+	ofLog(OF_LOG_NOTICE, "uploading posted files to " + uploadDir);
 }
 
 void ofxHTTPServer::setCallbackExtension(const string & cb_extension){

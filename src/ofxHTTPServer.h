@@ -12,14 +12,20 @@
 #include <sys/socket.h>
 #include "microhttpd.h"
 #include <ofMain.h>
+#include <map>
 
 class ofxHTTPServerResponse{
 public:
+	ofxHTTPServerResponse(){
+		errCode=200;
+	}
 	string url;
 	string response;
+	int errCode;
+	string errStr;
 
 	std::map<string,string> requestFields;
-	vector<string> uploadedFiles;
+	std::map<string,string> uploadedFiles;
 };
 
 
