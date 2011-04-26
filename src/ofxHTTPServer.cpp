@@ -137,6 +137,24 @@ int ofxHTTPServer::send_page (struct MHD_Connection *connection, long length, co
   return ret;
 }
 
+int ofxHTTPServer::send_redirect (struct MHD_Connection *connection, const char* location, int status_code)
+{
+  int ret;
+  struct MHD_Response *response;
+
+
+  char data[]="";
+  response = MHD_create_response_from_data (0,data, MHD_NO, MHD_YES);
+  if (!response) return MHD_NO;
+
+  MHD_add_response_header (response, "Location", location);
+
+  ret = MHD_queue_response (connection, status_code, response);
+  MHD_destroy_response (response);
+
+  return ret;
+}
+
 
 
 // public methods
@@ -228,7 +246,11 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		if(strmethod=="GET"){
 			ofNotifyEvent(instance.getEvent,response);
-			ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+			if(response.errCode>=300 || response.errCode<400){
+				ret = send_redirect(connection, response.location.c_str(), response.errCode);
+			}else{
+				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+			}
 		}else if (strmethod=="POST"){
 			connection_info *con_info = (connection_info *)*con_cls;
 
@@ -252,8 +274,11 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 					  }
 				}
 				ofNotifyEvent(instance.postEvent,response);
-
-				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+				if(response.errCode>=300 || response.errCode<400){
+					ret = send_redirect(connection, response.location.c_str(), response.errCode);
+				}else{
+					ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+				}
 			}
 
 		}
@@ -264,11 +289,24 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		ofFile file(instance.fsRoot + url,ofFile::ReadOnly,true);
 		if(!file.exists()){
-			cerr << "Error: file could not be opened trying to serve 404.html" << endl;
-			ofFile file404("404.html");
-			ofBuffer buf;
-			file404 >> buf;
-			send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_NOT_FOUND);
+			ofxHTTPServerResponse response;
+			response.errCode = 404;
+			response.url = strurl;
+
+			ofNotifyEvent(instance.fileNotFoundEvent,response);
+			if(response.errCode>=300 || response.errCode<400){
+				ret = send_redirect(connection, response.location.c_str(), response.errCode);
+			}else if(response.errCode!=404){
+				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+			}else{
+
+				cerr << "Error: file could not be opened trying to serve 404.html" << endl;
+				ofFile file404("404.html");
+				ofBuffer buf;
+				file404 >> buf;
+				send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_NOT_FOUND);
+			}
+
 		}else{
 			ofBuffer buf;
 			file >> buf;

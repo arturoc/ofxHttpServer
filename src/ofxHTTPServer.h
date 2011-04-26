@@ -23,6 +23,7 @@ public:
 	string response;
 	int errCode;
 	string errStr;
+	string location; // for redirections
 
 	std::map<string,string> requestFields;
 	std::map<string,string> uploadedFiles;
@@ -47,6 +48,7 @@ public:
 
 	ofEvent<ofxHTTPServerResponse> getEvent;
 	ofEvent<ofxHTTPServerResponse> postEvent;
+	ofEvent<ofxHTTPServerResponse> fileNotFoundEvent;
 
 
 	static int answer_to_connection(void *cls,
@@ -70,6 +72,7 @@ private:
 	static int print_out_key (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 
 	static int send_page (struct MHD_Connection *connection, long length, const char* page, int status_code);
+	static int send_redirect (struct MHD_Connection *connection, const char* location, int status_code);
 
 	static void request_completed (void *cls, struct MHD_Connection *connection, void **con_cls,
 	                        enum MHD_RequestTerminationCode toe);
