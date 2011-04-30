@@ -50,6 +50,15 @@ int ofxHTTPServer::print_out_key (void *cls, enum MHD_ValueKind kind, const char
   return MHD_YES;
 }
 
+
+int ofxHTTPServer::get_get_parameters (void *cls, enum MHD_ValueKind kind, const char *key, const char *value)
+{
+	connection_info *con_info = (connection_info*) cls;
+	if(key!=NULL && value!=NULL)
+	con_info->fields[key] = value;
+	return MHD_YES;
+}
+
 int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, const char *key,
                   const char *filename, const char *content_type,
                   const char *transfer_encoding, const char *data, uint64_t off, size_t size)
@@ -211,6 +220,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		if(strmethod=="GET"){
 			con_info->connectiontype = GET;
+			MHD_get_connection_values (connection, MHD_GET_ARGUMENT_KIND, get_get_parameters, con_info);
 		}else if (strmethod=="POST"){
 
 
@@ -242,11 +252,12 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		ofxHTTPServerResponse response;
 		response.url = strurl;
+		response.requestFields = con_info->fields;
 
 
 		if(strmethod=="GET"){
 			ofNotifyEvent(instance.getEvent,response);
-			if(response.errCode>=300 || response.errCode<400){
+			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
 			}else{
 				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
@@ -274,7 +285,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 					  }
 				}
 				ofNotifyEvent(instance.postEvent,response);
-				if(response.errCode>=300 || response.errCode<400){
+				if(response.errCode>=300 && response.errCode<400){
 					ret = send_redirect(connection, response.location.c_str(), response.errCode);
 				}else{
 					ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
@@ -294,7 +305,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			response.url = strurl;
 
 			ofNotifyEvent(instance.fileNotFoundEvent,response);
-			if(response.errCode>=300 || response.errCode<400){
+			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
 			}else if(response.errCode!=404){
 				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);

@@ -70,6 +70,7 @@ private:
 	unsigned maxClients;
 
 	static int print_out_key (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
+	static int get_get_parameters (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 
 	static int send_page (struct MHD_Connection *connection, long length, const char* page, int status_code);
 	static int send_redirect (struct MHD_Connection *connection, const char* location, int status_code);
