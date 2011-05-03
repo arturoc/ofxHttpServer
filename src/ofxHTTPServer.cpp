@@ -46,7 +46,7 @@ int connection_info::id=0;
 
 int ofxHTTPServer::print_out_key (void *cls, enum MHD_ValueKind kind, const char *key, const char *value)
 {
-  printf ("%s = %s\n", key, value);
+  ofLogVerbose ("ofxHttpServer") << ofVAArgsToString("%s = %s\n", key, value);
   return MHD_YES;
 }
 
@@ -65,17 +65,17 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 {
 	connection_info *con_info = (connection_info*) coninfo_cls;
 
-	cout << "processing connection " << con_info->conn_id << endl;
+	ofLogVerbose("ofxHttpServer") << "processing connection " << con_info->conn_id << endl;
 	if (size > 0){
-		cout << "processing post field of size: "<< size <<","<< endl;
+		ofLogVerbose("ofxHttpServer") << "processing post field of size: "<< size <<","<< endl;
 		if(transfer_encoding)
-			cout << " transfer encoding: "<< transfer_encoding<< endl;
+			ofLogVerbose("ofxHttpServer") << " transfer encoding: "<< transfer_encoding<< endl;
 		if(content_type)
-			cout << ", content: " << content_type<< endl;
+			ofLogVerbose("ofxHttpServer") << ", content: " << content_type<< endl;
 		if(filename)
-			cout << ", filename: "<< filename<< endl;
+			ofLogVerbose("ofxHttpServer") << ", filename: "<< filename<< endl;
 
-		cout << ", "  << key << endl;//": " <<data << endl;
+		ofLogVerbose("ofxHttpServer") << ", "  << key << endl;//": " <<data << endl;
 
 		if(!filename){
 		 char * aux_data = new char[off+size+1];
@@ -98,7 +98,7 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 			}
 			if(size>0){
 				if (!fwrite (data, size, sizeof(char), con_info->file_fields[filename])){
-					cout << "ofxHttpServer:" << "error on writing" << endl;
+					ofLogVerbose("ofxHttpServer") << "ofxHttpServer:" << "error on writing" << endl;
 					con_info->file_fields.erase(filename);
 					return MHD_NO;
 				}
@@ -203,7 +203,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			contentType = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE);
 		if ( contentType.substr(0,31) == "multipart/form-data; boundary=\""){
 			contentType = "multipart/form-data; boundary="+contentType.substr(31,contentType.size()-32);
-			cout << "changing content type: " << contentType << endl;
+			ofLogVerbose("ofxHttpServer") << "changing content type: " << contentType << endl;
 			strcpy(con_info->new_content_type,contentType.c_str());
 			MHD_set_connection_value(connection,MHD_HEADER_KIND,CONTENT_TYPE,con_info->new_content_type);
 		}
@@ -228,7 +228,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 			if (NULL == con_info->postprocessor)
 			{
-				cout << "error creating postprocessor" << endl;
+				ofLogVerbose("ofxHttpServer") << "error creating postprocessor" << endl;
 			  delete con_info;
 			  return MHD_NO;
 			}
@@ -248,14 +248,14 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 	// if the extension of the url is that set to the callback, call the events to generate the response
 	if(instance.callbackExtensionSet && strurl.substr(strurl.size()-instance.callbackExtension.size())==instance.callbackExtension){
-		cout << method << " serving from callback: " << url << endl;
+		ofLogVerbose("ofxHttpServer") << method << " serving from callback: " << url << endl;
 
 		ofxHTTPServerResponse response;
 		response.url = strurl;
-		response.requestFields = con_info->fields;
 
 
 		if(strmethod=="GET"){
+			response.requestFields = con_info->fields;
 			ofNotifyEvent(instance.getEvent,response);
 			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
@@ -270,11 +270,11 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 				*upload_data_size = 0;
 
 			}else{
-				cout << "upload_data_size =  0" << endl;
+				ofLogVerbose("ofxHttpServer") << "upload_data_size =  0" << endl;
 				response.requestFields = con_info->fields;
 				map<string,string>::iterator it_f;
 				for(it_f=con_info->fields.begin();it_f!=con_info->fields.end();it_f++){
-					cout << it_f->first << ", " << it_f->second;
+					ofLogVerbose("ofxHttpServer") << it_f->first << ", " << it_f->second;
 				}
 				map<string,FILE*>::iterator it;
 				for(it=con_info->file_fields.begin();it!=con_info->file_fields.end();it++){
@@ -296,7 +296,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 	// if the extension of the url is any other try to serve a file
 	}else{
-		cout << method << " serving from filesystem: " << url << endl;
+		ofLogVerbose("ofxHttpServer") << method << " serving from filesystem: " << url << endl;
 
 		ofFile file(instance.fsRoot + url,ofFile::ReadOnly,true);
 		if(!file.exists()){
@@ -321,7 +321,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 		}else{
 			ofBuffer buf;
 			file >> buf;
-			cout << "response: file " << instance.fsRoot << url << " of size " << buf.size() << endl;
+			ofLogVerbose("ofxHttpServer") << "response: file " << instance.fsRoot << url << " of size " << buf.size() << endl;
 			ret = send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_OK);
 		}
 	}
@@ -345,14 +345,14 @@ void ofxHTTPServer::stop(){
 void ofxHTTPServer::setServerRoot(const string & fsroot){
 	fsRoot = ofToDataPath(fsroot,true);
 	ofDirectory(fsRoot).create();
-	ofLog(OF_LOG_NOTICE, "serving files at " + fsRoot );
+	ofLogNotice("ofxHttpServer", "serving files at " + fsRoot );
 }
 
 
 void ofxHTTPServer::setUploadDir(const string & uploaddir){
 	uploadDir = ofToDataPath(uploaddir,true);
 	ofDirectory(uploadDir).create();
-	ofLog(OF_LOG_NOTICE, "uploading posted files to " + uploadDir);
+	ofLogNotice("ofxHttpServer", "uploading posted files to " + uploadDir);
 }
 
 void ofxHTTPServer::setCallbackExtension(const string & cb_extension){
