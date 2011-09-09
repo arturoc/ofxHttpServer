@@ -238,6 +238,8 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		*con_cls = (void*) con_info;
 		return MHD_YES;
+	}else{
+		con_info = (connection_info*) *con_cls;
 	}
 
 
@@ -263,8 +265,6 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
 			}
 		}else if (strmethod=="POST"){
-			connection_info *con_info = (connection_info *)*con_cls;
-
 			if (*upload_data_size != 0){
 				ret = MHD_post_process(con_info->postprocessor, upload_data, *upload_data_size);
 				*upload_data_size = 0;
@@ -331,9 +331,10 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 }
 
 
-void ofxHTTPServer::start(unsigned _port) {
+void ofxHTTPServer::start(unsigned _port, bool threaded) {
 	port = _port;
-	http_daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, _port, NULL, NULL,
+	http_daemon = MHD_start_daemon(threaded?MHD_USE_THREAD_PER_CONNECTION:MHD_USE_SELECT_INTERNALLY,
+			_port, NULL, NULL,
 			&answer_to_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED,
             &request_completed, NULL, MHD_OPTION_END);
 }

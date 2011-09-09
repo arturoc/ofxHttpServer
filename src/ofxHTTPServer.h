@@ -9,7 +9,15 @@
 #define OFXHTTPSERVER_H_
 
 #include <cstdarg>
-#include <sys/socket.h>
+
+#if defined( __WIN32__ ) || defined( _WIN32 )
+   #define MHD_PLATFORM_H
+   #include <ws2tcpip.h>
+   #include <stdint.h>
+#else
+   #include <sys/socket.h>
+#endif
+
 #include "microhttpd.h"
 #include <ofMain.h>
 #include <map>
@@ -39,7 +47,7 @@ public:
 	virtual ~ofxHTTPServer();
 
 
-	void start(unsigned port = 8888);
+	void start(unsigned port = 8888, bool threaded=false);
 	void stop();
 	void setServerRoot(const string & fsroot);
 	void setUploadDir(const string & uploadDir);
