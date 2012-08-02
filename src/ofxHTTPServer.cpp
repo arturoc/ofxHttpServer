@@ -201,7 +201,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 		string contentType;
 		if(MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE)!=NULL)
 			contentType = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE);
-		if ( contentType.substr(0,31) == "multipart/form-data; boundary=\""){
+		if ( contentType.size()>31 && contentType.substr(0,31) == "multipart/form-data; boundary=\""){
 			contentType = "multipart/form-data; boundary="+contentType.substr(31,contentType.size()-32);
 			ofLogVerbose("ofxHttpServer") << "changing content type: " << contentType << endl;
 			strcpy(con_info->new_content_type,contentType.c_str());
@@ -249,7 +249,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 
 	// if the extension of the url is that set to the callback, call the events to generate the response
-	if(instance.callbackExtensionSet && strurl.substr(strurl.size()-instance.callbackExtension.size())==instance.callbackExtension){
+	if(instance.callbackExtensionSet && strurl.size()>instance.callbackExtension.size() && strurl.substr(strurl.size()-instance.callbackExtension.size())==instance.callbackExtension){
 		ofLogVerbose("ofxHttpServer") << method << " serving from callback: " << url << endl;
 
 		ofxHTTPServerResponse response;
