@@ -131,7 +131,7 @@ void ofxHTTPServer::request_completed (void *cls, struct MHD_Connection *connect
   instance.numClients--;
 }
 
-int ofxHTTPServer::send_page (struct MHD_Connection *connection, long length, const char* page, int status_code)
+int ofxHTTPServer::send_page (struct MHD_Connection *connection, long length, const char* page, int status_code, string contentType)
 {
   int ret;
   struct MHD_Response *response;
@@ -139,6 +139,10 @@ int ofxHTTPServer::send_page (struct MHD_Connection *connection, long length, co
 
   response = MHD_create_response_from_data (length, (void*) page, MHD_NO, MHD_YES);
   if (!response) return MHD_NO;
+
+  if(contentType!=""){
+	  MHD_add_response_header (response,"Content-Type",contentType.c_str());
+  }
 
   ret = MHD_queue_response (connection, status_code, response);
   MHD_destroy_response (response);
@@ -262,7 +266,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
 			}else{
-				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+				ret = send_page(connection, response.response.size(), response.response.getBinaryBuffer(), response.errCode, response.contentType);
 			}
 		}else if (strmethod=="POST"){
 			if (*upload_data_size != 0){
@@ -288,7 +292,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 				if(response.errCode>=300 && response.errCode<400){
 					ret = send_redirect(connection, response.location.c_str(), response.errCode);
 				}else{
-					ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+					ret = send_page(connection, response.response.size(), response.response.getBinaryBuffer(), response.errCode, response.contentType);
 				}
 			}
 
@@ -308,7 +312,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
 			}else if(response.errCode!=404){
-				ret = send_page(connection, response.response.size(), response.response.c_str(), response.errCode);
+				ret = send_page(connection, response.response.size(), response.response.getBinaryBuffer(), response.errCode);
 			}else{
 
 				cerr << "Error: file could not be opened trying to serve 404.html" << endl;
