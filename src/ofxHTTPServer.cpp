@@ -128,7 +128,12 @@ void ofxHTTPServer::request_completed (void *cls, struct MHD_Connection *connect
   delete con_info;
   *con_cls = NULL;
 
+  instance.maxActiveClientsMutex.lock();
   instance.numClients--;
+  if(instance.numClients==instance.maxActiveClients){
+	  instance.maxActiveClientsCondition.signal();
+  }
+  instance.maxActiveClientsMutex.unlock();
 }
 
 int ofxHTTPServer::send_page (struct MHD_Connection *connection, long length, const char* page, int status_code, string contentType)
@@ -174,9 +179,12 @@ int ofxHTTPServer::send_redirect (struct MHD_Connection *connection, const char*
 //------------------------------------------------------
 ofxHTTPServer::ofxHTTPServer() {
 	callbackExtensionSet = false;
-	maxClients = 10;
+	maxClients = 100;
 	numClients = 0;
+	maxActiveClients = 4;
 	uploadDir = ofToDataPath("",true);
+	http_daemon = NULL;
+	port = 8888;
 }
 
 ofxHTTPServer::~ofxHTTPServer() {
@@ -198,7 +206,6 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 	// and return MHD_YES, that will make the server call us again
 	if(NULL == *con_cls){
 		con_info = new connection_info;
-		instance.numClients++;
 
 		// super ugly hack to manage poco multipart post connections as it sets boundary between "" and
 		// libmicrohttpd doesn't seem to support that
@@ -214,13 +221,20 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 		MHD_get_connection_values (connection, MHD_HEADER_KIND, print_out_key, NULL);
 
 
-
-		if (instance.numClients >= instance.maxClients){
+		instance.maxActiveClientsMutex.lock();
+		instance.numClients++;
+		if(instance.numClients >= instance.maxClients){
+			instance.maxActiveClientsMutex.unlock();
 			ofFile file503("503.html");
 			ofBuffer buf;
 			file503 >> buf;
 			return send_page(connection, buf.size(), buf.getBinaryBuffer(), MHD_HTTP_SERVICE_UNAVAILABLE);
 		}
+
+		if(instance.numClients > instance.maxActiveClients){
+			instance.maxActiveClientsCondition.wait(instance.maxActiveClientsMutex);
+		}
+		instance.maxActiveClientsMutex.unlock();
 
 		if(strmethod=="GET"){
 			con_info->connectiontype = GET;
@@ -368,4 +382,8 @@ void ofxHTTPServer::setCallbackExtension(const string & cb_extension){
 
 void ofxHTTPServer::setMaxNumberClients(unsigned num_clients){
 	maxClients = num_clients;
+}
+
+void ofxHTTPServer::setMaxNumberActiveClients(unsigned num_clients){
+	maxActiveClients = num_clients;
 }

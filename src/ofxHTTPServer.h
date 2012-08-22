@@ -19,6 +19,7 @@
 #endif
 
 #include "microhttpd.h"
+#include "Poco/Condition.h"
 #include <ofMain.h>
 #include <map>
 
@@ -54,6 +55,7 @@ public:
 	void setUploadDir(const string & uploadDir);
 	void setCallbackExtension(const string & cb_extension);
 	void setMaxNumberClients(unsigned num_clients);
+	void setMaxNumberActiveClients(unsigned num_clients);
 
 	ofEvent<ofxHTTPServerResponse> getEvent;
 	ofEvent<ofxHTTPServerResponse> postEvent;
@@ -77,6 +79,9 @@ private:
 	unsigned port;
 	unsigned numClients;
 	unsigned maxClients;
+	unsigned maxActiveClients;
+	Poco::Condition maxActiveClientsCondition;
+	ofMutex maxActiveClientsMutex;
 
 	static int print_out_key (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 	static int get_get_parameters (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
