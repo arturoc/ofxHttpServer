@@ -117,7 +117,10 @@ void ofxHTTPServer::request_completed (void *cls, struct MHD_Connection *connect
   connection_info *con_info = (connection_info*) *con_cls;
 
 
-  if (NULL == con_info) return;
+  if (NULL == con_info){
+	  ofLogWarning("ofxHttpServer") << "request completed NULL connection";
+	  return;
+  }
 
   if (con_info->connectiontype == POST){
       MHD_destroy_post_processor (con_info->postprocessor);
@@ -130,9 +133,7 @@ void ofxHTTPServer::request_completed (void *cls, struct MHD_Connection *connect
 
   instance.maxActiveClientsMutex.lock();
   instance.numClients--;
-  if(instance.numClients==instance.maxActiveClients){
-	  instance.maxActiveClientsCondition.signal();
-  }
+  instance.maxActiveClientsCondition.signal();
   instance.maxActiveClientsMutex.unlock();
 }
 
@@ -185,6 +186,7 @@ ofxHTTPServer::ofxHTTPServer() {
 	uploadDir = ofToDataPath("",true);
 	http_daemon = NULL;
 	port = 8888;
+	listener = NULL;
 }
 
 ofxHTTPServer::~ofxHTTPServer() {
@@ -207,20 +209,6 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 	if(NULL == *con_cls){
 		con_info = new connection_info;
 
-		// super ugly hack to manage poco multipart post connections as it sets boundary between "" and
-		// libmicrohttpd doesn't seem to support that
-		string contentType;
-		if(MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE)!=NULL)
-			contentType = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE);
-		if ( contentType.size()>31 && contentType.substr(0,31) == "multipart/form-data; boundary=\""){
-			contentType = "multipart/form-data; boundary="+contentType.substr(31,contentType.size()-32);
-			ofLogVerbose("ofxHttpServer") << "changing content type: " << contentType << endl;
-			strcpy(con_info->new_content_type,contentType.c_str());
-			MHD_set_connection_value(connection,MHD_HEADER_KIND,CONTENT_TYPE,con_info->new_content_type);
-		}
-		MHD_get_connection_values (connection, MHD_HEADER_KIND, print_out_key, NULL);
-
-
 		instance.maxActiveClientsMutex.lock();
 		instance.numClients++;
 		if(instance.numClients >= instance.maxClients){
@@ -235,6 +223,19 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			instance.maxActiveClientsCondition.wait(instance.maxActiveClientsMutex);
 		}
 		instance.maxActiveClientsMutex.unlock();
+
+		// super ugly hack to manage poco multipart post connections as it sets boundary between "" and
+		// libmicrohttpd doesn't seem to support that
+		string contentType;
+		if(MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE)!=NULL)
+			contentType = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, CONTENT_TYPE);
+		if ( contentType.size()>31 && contentType.substr(0,31) == "multipart/form-data; boundary=\""){
+			contentType = "multipart/form-data; boundary="+contentType.substr(31,contentType.size()-32);
+			ofLogVerbose("ofxHttpServer") << "changing content type: " << contentType << endl;
+			strcpy(con_info->new_content_type,contentType.c_str());
+			MHD_set_connection_value(connection,MHD_HEADER_KIND,CONTENT_TYPE,con_info->new_content_type);
+		}
+		MHD_get_connection_values (connection, MHD_HEADER_KIND, print_out_key, NULL);
 
 		if(strmethod=="GET"){
 			con_info->connectiontype = GET;
@@ -268,6 +269,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 	// if the extension of the url is that set to the callback, call the events to generate the response
 	if(instance.callbackExtensionSet && strurl.size()>instance.callbackExtension.size() && strurl.substr(strurl.size()-instance.callbackExtension.size())==instance.callbackExtension){
+
 		ofLogVerbose("ofxHttpServer") << method << " serving from callback: " << url << endl;
 
 		ofxHTTPServerResponse response;
@@ -276,7 +278,8 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		if(strmethod=="GET"){
 			response.requestFields = con_info->fields;
-			ofNotifyEvent(instance.getEvent,response);
+			if(instance.listener) instance.listener->getRequest(response);
+			//ofNotifyEvent(instance.getEvent,response);
 			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
 			}else{
@@ -302,7 +305,8 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 						  response.uploadedFiles[con_info->file_to_key_index[it->first]]=it->first;
 					  }
 				}
-				ofNotifyEvent(instance.postEvent,response);
+				//ofNotifyEvent(instance.postEvent,response);
+				if(instance.listener) instance.listener->postRequest(response);
 				if(response.errCode>=300 && response.errCode<400){
 					ret = send_redirect(connection, response.location.c_str(), response.errCode);
 				}else{
@@ -322,7 +326,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 			response.errCode = 404;
 			response.url = strurl;
 
-			ofNotifyEvent(instance.fileNotFoundEvent,response);
+			if(instance.listener) instance.listener->fileNotFound(response);
 			if(response.errCode>=300 && response.errCode<400){
 				ret = send_redirect(connection, response.location.c_str(), response.errCode);
 			}else if(response.errCode!=404){
@@ -386,4 +390,12 @@ void ofxHTTPServer::setMaxNumberClients(unsigned num_clients){
 
 void ofxHTTPServer::setMaxNumberActiveClients(unsigned num_clients){
 	maxActiveClients = num_clients;
+}
+
+unsigned ofxHTTPServer::getNumberClients(){
+	return numClients;
+}
+
+void ofxHTTPServer::setListener(ofxHTTPServerListener & _listener){
+	listener = &_listener;
 }

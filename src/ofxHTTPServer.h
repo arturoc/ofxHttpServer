@@ -39,6 +39,14 @@ public:
 	std::map<string,string> uploadedFiles;
 };
 
+class ofxHTTPServerListener{
+public:
+	virtual ~ofxHTTPServerListener(){}
+	virtual void getRequest(ofxHTTPServerResponse & response)=0;
+	virtual void postRequest(ofxHTTPServerResponse & response)=0;
+	virtual void fileNotFound(ofxHTTPServerResponse & response)=0;
+};
+
 
 class ofxHTTPServer {
 public:
@@ -56,10 +64,9 @@ public:
 	void setCallbackExtension(const string & cb_extension);
 	void setMaxNumberClients(unsigned num_clients);
 	void setMaxNumberActiveClients(unsigned num_clients);
+	unsigned getNumberClients();
 
-	ofEvent<ofxHTTPServerResponse> getEvent;
-	ofEvent<ofxHTTPServerResponse> postEvent;
-	ofEvent<ofxHTTPServerResponse> fileNotFoundEvent;
+	void setListener(ofxHTTPServerListener & listener);
 
 
 	static int answer_to_connection(void *cls,
@@ -82,6 +89,7 @@ private:
 	unsigned maxActiveClients;
 	Poco::Condition maxActiveClientsCondition;
 	ofMutex maxActiveClientsMutex;
+	ofxHTTPServerListener * listener;
 
 	static int print_out_key (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 	static int get_get_parameters (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
