@@ -31,8 +31,8 @@
  * Hence you cannot include it directly in applications
  * that use libmicrohttpd.
  */
-#ifndef PLATFORM_H
-#define PLATFORM_H
+#ifndef MHD_PLATFORM_H
+#define MHD_PLATFORM_H
 
 #include "MHD_config.h"
 
@@ -53,7 +53,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#ifndef MINGW
+#if !defined(MINGW) && !defined(__SYMBIAN32__)
 #include <search.h>
 #endif
 #include <stddef.h>
@@ -109,7 +109,7 @@
 #include <arpa/inet.h>
 #endif
 
-#include "plibc.h"
+#include <plibc.h>
 
 
 #endif

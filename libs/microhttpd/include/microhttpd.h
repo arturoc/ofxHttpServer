@@ -1,6 +1,6 @@
 /*
      This file is part of libmicrohttpd
-     (C) 2006, 2007, 2008, 2009 Christian Grothoff (and other contributing authors)
+     (C) 2006, 2007, 2008, 2009, 2010, 2011 Christian Grothoff (and other contributing authors)
 
      This library is free software; you can redistribute it and/or
      modify it under the terms of the GNU Lesser General Public
@@ -41,10 +41,10 @@
  * continue" are understood and handled automatically).<p>
  *
  * MHD understands POST data and is able to decode certain formats
- * (at the moment only "application/x-www-form-urlencoded") if the
- * entire data fits into the allowed amount of memory for the
- * connection.  Unsupported encodings and large POST submissions are
- * provided as a stream to the main application (and thus can be
+ * (at the moment only "application/x-www-form-urlencoded" and
+ * "mulitpart/formdata"). Unsupported encodings and large POST 
+ * submissions may require the application to manually process
+ * the stream, which is provided to the main application (and thus can be
  * processed, just not conveniently by MHD).<p>
  *
  * The header file defines various constants used by the HTTP protocol.
@@ -63,14 +63,14 @@
  * includes to define the "uint64_t", "size_t", "fd_set", "socklen_t"
  * and "struct sockaddr" data types (which headers are needed may
  * depend on your platform; for possible suggestions consult
- * "platform.h" in the MHD distribution).
- *
+ * "platform.h" in the MHD distribution).  If you have done so, you
+ * should also have a line with "#define MHD_PLATFORM_H" which will
+ * prevent this header from trying (and, depending on your platform,
+ * failing) to #include the right headers.
  */
 
 #ifndef MHD_MICROHTTPD_H
 #define MHD_MICROHTTPD_H
-
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -80,22 +80,83 @@ extern "C"
 #endif
 #endif
 
+/* While we generally would like users to use a configure-driven
+   build process which detects which headers are present and
+   hence works on any platform, we use "standard" includes here
+   to build out-of-the-box for beginning users on common systems.
+
+   Once you have a proper build system and go for more exotic 
+   platforms, you should define MHD_PLATFORM_H in some header that
+   you always include *before* "microhttpd.h".  Then the following
+   "standard" includes won't be used (which might be a good
+   idea, especially on platforms where they do not exist). */
+#ifndef MHD_PLATFORM_H
+#include <unistd.h>
+#include <stdarg.h>
+#include <stdint.h>
+#ifdef __MINGW32__
+#include <ws2tcpip.h>
+#else
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#endif
+#endif
+
 /**
  * Current version of the library.
  */
-#define MHD_VERSION 0x00040200
+#define MHD_VERSION 0x00091500
 
 /**
- * MHD-internal return codes.
+ * MHD-internal return code for "YES".
  */
 #define MHD_YES 1
 
+/**
+ * MHD-internal return code for "NO".
+ */
 #define MHD_NO 0
 
 /**
- * Constant used to indicate unknown size.
+ * MHD digest auth internal code for an invalid nonce.
  */
+#define MHD_INVALID_NONCE -1
+
+/**
+ * Constant used to indicate unknown size (use when
+ * creating a response).
+ */
+#ifdef UINT64_MAX
+#define MHD_SIZE_UNKNOWN UINT64_MAX
+#else
 #define MHD_SIZE_UNKNOWN  ((uint64_t) -1LL)
+#endif
+
+#ifdef SIZE_MAX
+#define MHD_CONTENT_READER_END_OF_STREAM SIZE_MAX
+#define MHD_CONTENT_READER_END_WITH_ERROR (SIZE_MAX - 1)
+#else
+#define MHD_CONTENT_READER_END_OF_STREAM ((size_t) -1LL)
+#define MHD_CONTENT_READER_END_WITH_ERROR (((size_t) -1LL) - 1)
+#endif
+
+/**
+ * Not all architectures and printf's support the long long type.
+ * This gives the ability to replace long long with just a long,
+ * standard int or a short.
+ */
+#ifndef MHD_LONG_LONG
+#define MHD_LONG_LONG long long
+#endif
+#ifndef MHD_LONG_LONG_PRINTF
+/**
+ * Format string for printing a variable of type 'MHD_LONG_LONG'.
+ * You should only redefine this if you also define MHD_LONG_LONG.
+ */
+#define MHD_LONG_LONG_PRINTF "ll"
+#endif
+
 
 /**
  * HTTP response codes.
@@ -145,7 +206,10 @@ extern "C"
 #define MHD_HTTP_FAILED_DEPENDENCY 424
 #define MHD_HTTP_UNORDERED_COLLECTION 425
 #define MHD_HTTP_UPGRADE_REQUIRED 426
+#define MHD_HTTP_NO_RESPONSE 444
 #define MHD_HTTP_RETRY_WITH 449
+#define MHD_HTTP_BLOCKED_BY_WINDOWS_PARENTAL_CONTROLS 450
+#define MHD_HTTP_UNAVAILABLE_FOR_LEGAL_REASONS 451
 
 #define MHD_HTTP_INTERNAL_SERVER_ERROR 500
 #define MHD_HTTP_NOT_IMPLEMENTED 501
@@ -157,6 +221,13 @@ extern "C"
 #define MHD_HTTP_INSUFFICIENT_STORAGE 507
 #define MHD_HTTP_BANDWIDTH_LIMIT_EXCEEDED 509
 #define MHD_HTTP_NOT_EXTENDED 510
+
+/**
+ * Flag to be "OR"ed with MHD_HTTP status code for
+ * SHOUTcast.  This will cause the response to begin
+ * with the SHOUTcast "ICY" line instad of "HTTP".
+ */ 
+#define MHD_ICY_FLAG ((uint32_t)(1 << 31))
 
 /* See also: http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html */
 #define MHD_HTTP_HEADER_ACCEPT "Accept"
@@ -176,6 +247,7 @@ extern "C"
 #define MHD_HTTP_HEADER_CONTENT_MD5 "Content-MD5"
 #define MHD_HTTP_HEADER_CONTENT_RANGE "Content-Range"
 #define MHD_HTTP_HEADER_CONTENT_TYPE "Content-Type"
+#define MHD_HTTP_HEADER_COOKIE "Cookie"
 #define MHD_HTTP_HEADER_DATE "Date"
 #define MHD_HTTP_HEADER_ETAG "ETag"
 #define MHD_HTTP_HEADER_EXPECT "Expect"
@@ -197,6 +269,8 @@ extern "C"
 #define MHD_HTTP_HEADER_REFERER "Referer"
 #define MHD_HTTP_HEADER_RETRY_AFTER "Retry-After"
 #define MHD_HTTP_HEADER_SERVER "Server"
+#define MHD_HTTP_HEADER_SET_COOKIE "Set-Cookie"
+#define MHD_HTTP_HEADER_SET_COOKIE2 "Set-Cookie2"
 #define MHD_HTTP_HEADER_TE "TE"
 #define MHD_HTTP_HEADER_TRAILER "Trailer"
 #define MHD_HTTP_HEADER_TRANSFER_ENCODING "Transfer-Encoding"
@@ -235,7 +309,7 @@ extern "C"
 
 /**
  * Options for the MHD daemon.  Note that if neither
- * MHD_USER_THREAD_PER_CONNECTION nor MHD_USE_SELECT_INTERNALLY are
+ * MHD_USE_THREAD_PER_CONNECTION nor MHD_USE_SELECT_INTERNALLY is
  * used, the client wants control over the process and will call the
  * appropriate microhttpd callbacks.<p>
  *
@@ -287,12 +361,35 @@ enum MHD_FLAG
    * recommended to turn this ON if you are testing clients against
    * MHD, and OFF in production.
    */
-  MHD_USE_PEDANTIC_CHECKS = 32
+  MHD_USE_PEDANTIC_CHECKS = 32,
+
+  /**
+   * Use poll instead of select. This allows sockets with fd >= FD_SETSIZE.
+   */
+  MHD_USE_POLL = 64,
+
+  /**
+   * Suppress (automatically) adding the 'Date:' header to HTTP responses.
+   * This option should ONLY be used on systems that do not have a clock
+   * and that DO provide other mechanisms for cache control.  See also
+   * RFC 2616, section 14.18 (exception 3).
+   */
+  MHD_SUPPRESS_DATE_NO_CLOCK = 128,
+
+  /**
+   * Run without a listen socket.  This option only makes sense if
+   * 'MHD_add_connection' is to be used exclusively to connect HTTP
+   * clients to the HTTP server.  This option is incompatible with
+   * using a thread pool; if it is used, 'MHD_OPTION_THREAD_POOL_SIZE'
+   * is ignored.
+   */
+  MHD_USE_NO_LISTEN_SOCKET = 256
+
 };
 
+
 /**
- * MHD options.  Passed in the varargs portion
- * of MHD_start_daemon.
+ * MHD options.  Passed in the varargs portion of MHD_start_daemon.
  */
 enum MHD_OPTION
 {
@@ -396,28 +493,24 @@ enum MHD_OPTION
 
   /**
    * Daemon credentials type.
-   * This option should be followed by one of the values listed in
-   * "enum MHD_GNUTLS_CredentialsType".
+   * Followed by an argument of type
+   * "gnutls_credentials_type_t".
    */
-  MHD_OPTION_CRED_TYPE = 10,
+  MHD_OPTION_HTTPS_CRED_TYPE = 10,
 
   /**
-   * SSL/TLS protocol version.
-   *
-   * Memory pointer to a zero (MHD_GNUTLS_PROTOCOL_END) terminated
-   * (const) array of 'enum MHD_GNUTLS_Protocol' values representing the
-   * protocol versions to this server should support. Unsupported
-   * requests will be droped by the server.
+   * Memory pointer to a "const char*" specifying the
+   * cipher algorithm (default: "NORMAL").
    */
-  MHD_OPTION_PROTOCOL_VERSION = 11,
+  MHD_OPTION_HTTPS_PRIORITIES = 11,
 
   /**
-   * Memory pointer to a zero (MHD_GNUTLS_CIPHER_UNKNOWN)
-   * terminated (const) array of 'enum MHD_GNUTLS_CipherAlgorithm'
-   * representing the cipher priority order to which the HTTPS
-   * daemon should adhere.
+   * Pass a listen socket for MHD to use (systemd-style).  If this
+   * option is used, MHD will not open its own listen socket(s). The
+   * argument passed must be of type "int" and refer to an
+   * existing socket that has been bound to a port and is listening.
    */
-  MHD_OPTION_CIPHER_ALGORITHM = 12,
+  MHD_OPTION_LISTEN_SOCKET = 12,
 
   /**
    * Use the given function for logging error messages.
@@ -441,8 +534,108 @@ enum MHD_OPTION
    * (MHD_start_daemon returns NULL for an unsupported thread
    * model).
    */
-  MHD_OPTION_THREAD_POOL_SIZE = 14
+  MHD_OPTION_THREAD_POOL_SIZE = 14,
+
+  /**
+   * Additional options given in an array of "struct MHD_OptionItem".
+   * The array must be terminated with an entry '{MHD_OPTION_END, 0, NULL}'.
+   * An example for code using MHD_OPTION_ARRAY is:
+   * <code>
+   * struct MHD_OptionItem ops[] = {
+   * { MHD_OPTION_CONNECTION_LIMIT, 100, NULL },
+   * { MHD_OPTION_CONNECTION_TIMEOUT, 10, NULL },
+   * { MHD_OPTION_END, 0, NULL }
+   * };
+   * d = MHD_start_daemon(0, 8080, NULL, NULL, dh, NULL,
+   *                      MHD_OPTION_ARRAY, ops,
+   *                      MHD_OPTION_END);
+   * </code>
+   * For options that expect a single pointer argument, the
+   * second member of the struct MHD_OptionItem is ignored.
+   * For options that expect two pointer arguments, the first
+   * argument must be cast to 'intptr_t'.
+   */
+  MHD_OPTION_ARRAY = 15,
+
+  /**
+   * Specify a function that should be called for unescaping escape
+   * sequences in URIs and URI arguments.  Note that this function
+   * will NOT be used by the MHD_PostProcessor.  If this option is
+   * not specified, the default method will be used which decodes
+   * escape sequences of the form "%HH".
+   * This option should be followed by two arguments, the first
+   * one must be of the form
+   * <pre>
+   *  size_t my_unescaper(void * cls, struct MHD_Connection *c, char *s)
+   * </pre>
+   * where the return value must be "strlen(s)" and
+   * "s" should be updated.  Note that the unescape function
+   * must not lengthen "s" (the result must be shorter than
+   * the input and still be 0-terminated).
+   * "cls" will be set to the second argument following
+   * MHD_OPTION_UNESCAPE_CALLBACK.
+   */
+  MHD_OPTION_UNESCAPE_CALLBACK = 16,
+
+  /**
+   * Memory pointer for the random values to be used by the Digest
+   * Auth module. This option should be followed by two arguments.
+   * First an integer of type  "size_t" which specifies the size
+   * of the buffer pointed to by the second argument in bytes.  
+   * Note that the application must ensure that the buffer of the
+   * second argument remains allocated and unmodified while the
+   * deamon is running.
+   */
+  MHD_OPTION_DIGEST_AUTH_RANDOM = 17,
+
+  /**
+   * Size of the internal array holding the map of the nonce and
+   * the nonce counter. This option should be followed by a "unsigend int"
+   * argument.
+   */
+  MHD_OPTION_NONCE_NC_SIZE = 18,
+
+  /**
+   * Desired size of the stack for threads created by MHD. Followed
+   * by an argument of type 'size_t'.  Use 0 for system 'default'.
+   */
+  MHD_OPTION_THREAD_STACK_SIZE = 19,
+
+  /**
+   * Memory pointer for the certificate (ca.pem) to be used by the
+   * HTTPS daemon for client authentification.
+   * This option should be followed by a "const char*" argument.
+   */
+  MHD_OPTION_HTTPS_MEM_TRUST =20
 };
+
+
+/**
+ * Entry in an MHD_OPTION_ARRAY.
+ */
+struct MHD_OptionItem
+{
+  /**
+   * Which option is being given.  Use MHD_OPTION_END
+   * to terminate the array.
+   */
+  enum MHD_OPTION option;
+
+  /**
+   * Option value (for integer arguments, and for options requiring
+   * two pointer arguments); should be 0 for options that take no
+   * arguments or only a single pointer argument.
+   */
+  intptr_t value;
+
+  /**
+   * Pointer option value (use NULL for options taking no arguments
+   * or only an integer option).
+   */
+  void *ptr_value;
+
+};
+
 
 /**
  * The MHD_ValueKind specifies the source of
@@ -488,6 +681,7 @@ enum MHD_ValueKind
   MHD_FOOTER_KIND = 16
 };
 
+
 /**
  * The MHD_RequestTerminationCode specifies reasons
  * why a request has been terminated (or completed).
@@ -518,39 +712,19 @@ enum MHD_RequestTerminationCode
    * We had to close the session since MHD was being
    * shut down.
    */
-  MHD_REQUEST_TERMINATED_DAEMON_SHUTDOWN = 3
+  MHD_REQUEST_TERMINATED_DAEMON_SHUTDOWN = 3,
+
+  /**
+   * We tried to read additional data, but the other side closed the
+   * connection.  This error is similar to
+   * MHD_REQUEST_TERMINATED_WITH_ERROR, but specific to the case where
+   * the connection died because the other side did not send expected
+   * data.
+   */
+  MHD_REQUEST_TERMINATED_READ_ERROR = 4
 
 };
 
-/**
- * List of symmetric ciphers.
- * Note that not all listed algorithms are necessarily
- * supported by all builds of MHD.
- */
-enum MHD_GNUTLS_CipherAlgorithm
-{
-  MHD_GNUTLS_CIPHER_UNKNOWN = 0,
-  MHD_GNUTLS_CIPHER_NULL = 1,
-  MHD_GNUTLS_CIPHER_ARCFOUR_128,
-  MHD_GNUTLS_CIPHER_3DES_CBC,
-  MHD_GNUTLS_CIPHER_AES_128_CBC,
-  MHD_GNUTLS_CIPHER_AES_256_CBC
-};
-
-/**
- * SSL/TLS Protocol types.
- * Note that not all listed algorithms are necessarily
- * supported by all builds of MHD.
- */
-enum MHD_GNUTLS_Protocol
-{
-  MHD_GNUTLS_PROTOCOL_END = 0,
-  MHD_GNUTLS_PROTOCOL_SSL3 = 1,
-  MHD_GNUTLS_PROTOCOL_TLS1_0,
-  MHD_GNUTLS_PROTOCOL_TLS1_1,
-  MHD_GNUTLS_PROTOCOL_TLS1_2,
-  MHD_GNUTLS_PROTOCOL_VERSION_UNKNOWN = 0xff
-};
 
 /**
  * Values of this enum are used to specify what
@@ -571,11 +745,33 @@ enum MHD_ConnectionInfoType
   MHD_CONNECTION_INFO_PROTOCOL,
 
   /**
-   * Obtain IP address of the client.
-   * Takes no extra arguments.
+   * Obtain IP address of the client.  Takes no extra arguments.
+   * Returns essentially a "struct sockaddr **" (since the API returns
+   * a "union MHD_ConnectionInfo *" and that union contains a "struct
+   * sockaddr *").
    */
-  MHD_CONNECTION_INFO_CLIENT_ADDRESS
+  MHD_CONNECTION_INFO_CLIENT_ADDRESS,
+
+  /**
+   * Get the GNUTLS session handle.
+   */
+  MHD_CONNECTION_INFO_GNUTLS_SESSION,
+
+  /**
+   * Get the GNUTLS client certificate handle.  Dysfunctional (never
+   * implemented, deprecated).  Use MHD_CONNECTION_INFO_GNUTLS_SESSION
+   * to get the gnutls_session_t and then call
+   * gnutls_certificate_get_peers().
+   */
+  MHD_CONNECTION_INFO_GNUTLS_CLIENT_CERT,
+
+  /**
+   * Get the 'struct MHD_Daemon' responsible for managing this connection.
+   */
+  MHD_CONNECTION_INFO_DAEMON
+
 };
+
 
 /**
  * Values of this enum are used to specify what
@@ -597,9 +793,14 @@ enum MHD_DaemonInfoType
    * algorithm should be passed as an extra
    * argument (of type 'enum MHD_GNUTLS_HashAlgorithm').
    */
-  MHD_DAEMON_INFO_MAC_KEY_SIZE
-};
+  MHD_DAEMON_INFO_MAC_KEY_SIZE,
 
+  /**
+   * Request the file descriptor for the listening socket.
+   * No extra arguments should be passed.
+   */
+  MHD_DAEMON_INFO_LISTEN_FD
+};
 
 
 /**
@@ -625,6 +826,22 @@ struct MHD_Response;
  */
 struct MHD_PostProcessor;
 
+
+/**
+ * Callback for serious error condition. The default action is to print
+ * an error message and abort().
+ *
+ * @param cls user specified value
+ * @param file where the error occured
+ * @param line where the error occured
+ * @param reason error detail, may be NULL
+ */
+typedef 
+  void (*MHD_PanicCallback) (void *cls,
+			     const char *file,
+			     unsigned int line,
+			     const char *reason);
+
 /**
  * Allow or deny a client to connect.
  *
@@ -636,6 +853,7 @@ typedef int
   (*MHD_AcceptPolicyCallback) (void *cls,
                                const struct sockaddr * addr,
                                socklen_t addrlen);
+
 
 /**
  * A client has requested the given url using the given method ("GET",
@@ -682,6 +900,7 @@ typedef int
                                 size_t *upload_data_size,
                                 void **con_cls);
 
+
 /**
  * Signature of the callback used by MHD to notify the
  * application about completed requests.
@@ -699,6 +918,7 @@ typedef void
                                    void **con_cls,
                                    enum MHD_RequestTerminationCode toe);
 
+
 /**
  * Iterator over key-value pairs.  This iterator
  * can be used to iterate over all of the cookies,
@@ -713,6 +933,7 @@ typedef int
   (*MHD_KeyValueIterator) (void *cls,
                            enum MHD_ValueKind kind,
                            const char *key, const char *value);
+
 
 /**
  * Callback used by libmicrohttpd in order to obtain content.  The
@@ -736,21 +957,37 @@ typedef int
  *        libmicrohttpd guarantees that "pos" will be
  *        the sum of all non-negative return values
  *        obtained from the content reader so far.
- * @return -1 for the end of transmission (or on error);
- *  if a content transfer size was pre-set and the callback
- *  has provided fewer than that amount of data,
- *  MHD will close the connection with the client;
- *  if no content size was specified and this is an
- *  http 1.1 connection using chunked encoding, MHD will
- *  interpret "-1" as the normal end of the transfer
- *  (possibly allowing the client to perform additional
- *  requests using the same TCP connection).
+ * @param buf where to copy the data
+ * @param max maximum number of bytes to copy to buf (size of buf)
+ * @return number of bytes written to 'buf'; 
+ *  0 is legal unless we are running in internal select mode (since
+ *    this would cause busy-waiting); 0 in external select mode
+ *    will cause this function to be called again once the external
+ *    select calls MHD again;
+ *  MHD_CONTENT_READER_END_OF_STREAM (-1) for the regular
+ *    end of transmission (with chunked encoding, MHD will then
+ *    terminate the chunk and send any HTTP footers that might be
+ *    present; without chunked encoding and given an unknown 
+ *    response size, MHD will simply close the connection; note
+ *    that while returning END_OF_STREAM is not technically
+ *    legal if a response size was specified, MHD accepts this
+ *    and treats it just as MHD_CONTENT_READER_END_WITH_ERROR;
+ *  MHD_CONTENT_READER_END_WITH_ERROR (-2) to indicate a server
+ *    error generating the response; this will cause MHD to simply
+ *    close the connection immediately.  If a response size was
+ *    given or if chunked encoding is in use, this will indicate
+ *    an error to the client.  Note, however, that if the client
+ *    does not know a response size and chunked encoding is not in
+ *    use, then clients will not be able to tell the difference between
+ *    MHD_CONTENT_READER_END_WITH_ERROR and MHD_CONTENT_READER_END_OF_STREAM.
+ *    This is not a limitation of MHD but rather of the HTTP protocol.
  */
-typedef int
+typedef ssize_t
   (*MHD_ContentReaderCallback) (void *cls,
 				uint64_t pos,
 				char *buf,
-				int max);
+				size_t max);
+
 
 /**
  * This method is called by libmicrohttpd if we
@@ -758,7 +995,9 @@ typedef int
  * be used to free resources associated with the
  * content reader.
  */
-typedef void (*MHD_ContentReaderFreeCallback) (void *cls);
+typedef void 
+  (*MHD_ContentReaderFreeCallback) (void *cls);
+
 
 /**
  * Iterator over key-value pairs where the value
@@ -786,7 +1025,9 @@ typedef int
                            const char *filename,
                            const char *content_type,
                            const char *transfer_encoding,
-                           const char *data, uint64_t off, size_t size);
+                           const char *data, 
+			   uint64_t off, 
+			   size_t size);
 
 /* **************** Daemon handling functions ***************** */
 
@@ -806,12 +1047,13 @@ typedef int
  *        terminated with MHD_OPTION_END).
  * @return NULL on error, handle to daemon on success
  */
-struct MHD_Daemon *MHD_start_daemon_va (unsigned int options,
-                                        unsigned short port,
-                                        MHD_AcceptPolicyCallback apc,
-                                        void *apc_cls,
-                                        MHD_AccessHandlerCallback dh,
-                                        void *dh_cls, va_list ap);
+struct MHD_Daemon *
+MHD_start_daemon_va (unsigned int options,
+		     uint16_t port,
+		     MHD_AcceptPolicyCallback apc, void *apc_cls,
+		     MHD_AccessHandlerCallback dh, void *dh_cls, 
+		     va_list ap);
+
 
 /**
  * Start a webserver on the given port.  Variadic version of
@@ -828,19 +1070,49 @@ struct MHD_Daemon *MHD_start_daemon_va (unsigned int options,
  * @param dh_cls extra argument to dh
  * @return NULL on error, handle to daemon on success
  */
-struct MHD_Daemon *MHD_start_daemon (unsigned int flags,
-                                     unsigned short port,
-                                     MHD_AcceptPolicyCallback apc,
-                                     void *apc_cls,
-                                     MHD_AccessHandlerCallback dh,
-                                     void *dh_cls, ...);
+struct MHD_Daemon *
+MHD_start_daemon (unsigned int flags,
+		  uint16_t port,
+		  MHD_AcceptPolicyCallback apc, void *apc_cls,
+		  MHD_AccessHandlerCallback dh, void *dh_cls, 
+		  ...);
+
 
 /**
  * Shutdown an http daemon.
  *
  * @param daemon daemon to stop
  */
-void MHD_stop_daemon (struct MHD_Daemon *daemon);
+void 
+MHD_stop_daemon (struct MHD_Daemon *daemon);
+
+
+/**
+ * Add another client connection to the set of connections 
+ * managed by MHD.  This API is usually not needed (since
+ * MHD will accept inbound connections on the server socket).
+ * Use this API in special cases, for example if your HTTP
+ * server is behind NAT and needs to connect out to the 
+ * HTTP client.
+ *
+ * The given client socket will be managed (and closed!) by MHD after
+ * this call and must no longer be used directly by the application
+ * afterwards.
+ *
+ * @param daemon daemon that manages the connection
+ * @param client_socket socket to manage (MHD will expect
+ *        to receive an HTTP request from this socket next).
+ * @param addr IP address of the client
+ * @param addrlen number of bytes in addr
+ * @return MHD_YES on success, MHD_NO if this daemon could
+ *        not handle the connection (i.e. malloc failed, etc).
+ *        The socket will be closed in any case.
+ */
+int 
+MHD_add_connection (struct MHD_Daemon *daemon, 
+		    int client_socket,
+		    const struct sockaddr *addr,
+		    socklen_t addrlen);
 
 
 /**
@@ -851,21 +1123,25 @@ void MHD_stop_daemon (struct MHD_Daemon *daemon);
  * @param write_fd_set write set
  * @param except_fd_set except set
  * @param max_fd increased to largest FD added (if larger
- *               than existing value)
+ *               than existing value); can be NULL
  * @return MHD_YES on success, MHD_NO if this
  *         daemon was not started with the right
  *         options for this call.
  */
 int
 MHD_get_fdset (struct MHD_Daemon *daemon,
-               fd_set * read_fd_set,
-               fd_set * write_fd_set, fd_set * except_fd_set, int *max_fd);
+               fd_set *read_fd_set,
+               fd_set *write_fd_set, 
+	       fd_set *except_fd_set, 
+	       int *max_fd);
+
 
 /**
- * Obtain timeout value for select for this daemon
- * (only needed if connection timeout is used).  The
- * returned value is how long select should at most
- * block, not the timeout value set for connections.
+ * Obtain timeout value for select for this daemon (only needed if
+ * connection timeout is used).  The returned value is how long select
+ * should at most block, not the timeout value set for connections.
+ * This function MUST NOT be called if MHD is running with
+ * "MHD_USE_THREAD_PER_CONNECTION".
  *
  * @param daemon daemon to query for timeout
  * @param timeout set to the timeout (in milliseconds)
@@ -873,7 +1149,8 @@ MHD_get_fdset (struct MHD_Daemon *daemon,
  *        not used (or no connections exist that would
  *        necessiate the use of a timeout right now).
  */
-int MHD_get_timeout (struct MHD_Daemon *daemon, unsigned long long *timeout);
+int MHD_get_timeout (struct MHD_Daemon *daemon, 
+		     unsigned MHD_LONG_LONG *timeout);
 
 
 /**
@@ -887,7 +1164,8 @@ int MHD_get_timeout (struct MHD_Daemon *daemon, unsigned long long *timeout);
  *         daemon was not started with the right
  *         options for this call.
  */
-int MHD_run (struct MHD_Daemon *daemon);
+int 
+MHD_run (struct MHD_Daemon *daemon);
 
 
 /* **************** Connection handling functions ***************** */
@@ -906,6 +1184,7 @@ int
 MHD_get_connection_values (struct MHD_Connection *connection,
                            enum MHD_ValueKind kind,
                            MHD_KeyValueIterator iterator, void *iterator_cls);
+
 
 /**
  * This function can be used to add an entry to
@@ -939,7 +1218,28 @@ MHD_get_connection_values (struct MHD_Connection *connection,
 int
 MHD_set_connection_value (struct MHD_Connection *connection,
                           enum MHD_ValueKind kind,
-                          const char *key, const char *value);
+                          const char *key, 
+			  const char *value);
+
+
+/**
+ * Sets the global error handler to a different implementation.  "cb"
+ * will only be called in the case of typically fatal, serious
+ * internal consistency issues.  These issues should only arise in the
+ * case of serious memory corruption or similar problems with the
+ * architecture.  While "cb" is allowed to return and MHD will then
+ * try to continue, this is never safe.
+ *
+ * The default implementation that is used if no panic function is set
+ * simply prints an error message and calls "abort".  Alternative
+ * implementations might call "exit" or other similar functions.
+ *
+ * @param cb new error handler
+ * @param cls passed to error handler
+ */
+void 
+MHD_set_panic_func (MHD_PanicCallback cb, void *cls);
+
 
 /**
  * Get a particular header value.  If multiple
@@ -947,12 +1247,14 @@ MHD_set_connection_value (struct MHD_Connection *connection,
  *
  * @param connection connection to get values from
  * @param kind what kind of value are we looking for
- * @param key the header to look for
+ * @param key the header to look for, NULL to lookup 'trailing' value without a key
  * @return NULL if no such item was found
  */
-const char *MHD_lookup_connection_value (struct MHD_Connection *connection,
-                                         enum MHD_ValueKind kind,
-                                         const char *key);
+const char *
+MHD_lookup_connection_value (struct MHD_Connection *connection,
+			     enum MHD_ValueKind kind,
+			     const char *key);
+
 
 /**
  * Queue a response to be transmitted to the client (as soon as
@@ -966,7 +1268,8 @@ const char *MHD_lookup_connection_value (struct MHD_Connection *connection,
  */
 int
 MHD_queue_response (struct MHD_Connection *connection,
-                    unsigned int status_code, struct MHD_Response *response);
+                    unsigned int status_code, 
+		    struct MHD_Response *response);
 
 
 /* **************** Response manipulation functions ***************** */
@@ -975,7 +1278,7 @@ MHD_queue_response (struct MHD_Connection *connection,
  * Create a response object.  The response object can be extended with
  * header information and then be used any number of times.
  *
- * @param size size of the data portion of the response, MHD_SIZE_UNKNOW for unknown
+ * @param size size of the data portion of the response, MHD_SIZE_UNKNOWN for unknown
  * @param block_size preferred block size for querying crc (advisory only,
  *                   MHD may still call crc using smaller chunks); this
  *                   is essentially the buffer size used for IO, clients
@@ -986,12 +1289,12 @@ MHD_queue_response (struct MHD_Connection *connection,
  * @param crfc callback to call to free crc_cls resources
  * @return NULL on error (i.e. invalid arguments, out of memory)
  */
-struct MHD_Response *MHD_create_response_from_callback (uint64_t size,
-                                                        size_t block_size,
-                                                        MHD_ContentReaderCallback
-                                                        crc, void *crc_cls,
-                                                        MHD_ContentReaderFreeCallback
-                                                        crfc);
+struct MHD_Response *
+MHD_create_response_from_callback (uint64_t size,
+				   size_t block_size,
+				   MHD_ContentReaderCallback crc, void *crc_cls,
+				   MHD_ContentReaderFreeCallback crfc);
+
 
 /**
  * Create a response object.  The response object can be extended with
@@ -1004,11 +1307,159 @@ struct MHD_Response *MHD_create_response_from_callback (uint64_t size,
  *        right away, the data maybe released anytime after
  *        this call returns
  * @return NULL on error (i.e. invalid arguments, out of memory)
+ * @deprecated use MHD_create_response_from_buffer instead
  */
-struct MHD_Response *MHD_create_response_from_data (size_t size,
-                                                    void *data,
-                                                    int must_free,
-                                                    int must_copy);
+struct MHD_Response *
+MHD_create_response_from_data (size_t size,
+			       void *data,
+			       int must_free,
+			       int must_copy);
+
+
+/**
+ * Specification for how MHD should treat the memory buffer
+ * given for the response.
+ */
+enum MHD_ResponseMemoryMode {
+
+  /**
+   * Buffer is a persistent (static/global) buffer that won't change
+   * for at least the lifetime of the response, MHD should just use
+   * it, not free it, not copy it, just keep an alias to it.
+   */
+  MHD_RESPMEM_PERSISTENT,
+
+  /**
+   * Buffer is heap-allocated with 'malloc' (or equivalent) and
+   * should be freed by MHD after processing the response has
+   * concluded (response reference counter reaches zero).
+   */
+  MHD_RESPMEM_MUST_FREE,
+
+  /**
+   * Buffer is in transient memory, but not on the heap (for example,
+   * on the stack or non-malloc allocated) and only valid during the
+   * call to 'MHD_create_response_from_buffer'.  MHD must make its
+   * own private copy of the data for processing.
+   */
+  MHD_RESPMEM_MUST_COPY
+
+};
+
+
+/**
+ * Create a response object.  The response object can be extended with
+ * header information and then be used any number of times.
+ *
+ * @param size size of the data portion of the response
+ * @param buffer size bytes containing the response's data portion
+ * @param mode flags for buffer management
+ * @return NULL on error (i.e. invalid arguments, out of memory)
+ */
+struct MHD_Response *
+MHD_create_response_from_buffer (size_t size,
+				 void *buffer,
+				 enum MHD_ResponseMemoryMode mode);
+
+
+/**
+ * Create a response object.  The response object can be extended with
+ * header information and then be used any number of times.
+ *
+ * @param size size of the data portion of the response
+ * @param fd file descriptor referring to a file on disk with the 
+ *        data; will be closed when response is destroyed;
+ *        fd should be in 'blocking' mode
+ * @return NULL on error (i.e. invalid arguments, out of memory)
+ */
+struct MHD_Response *
+MHD_create_response_from_fd (size_t size,
+			     int fd);
+
+
+/**
+ * Create a response object.  The response object can be extended with
+ * header information and then be used any number of times.
+ *
+ * @param size size of the data portion of the response
+ * @param fd file descriptor referring to a file on disk with the
+ *        data; will be closed when response is destroyed;
+ *        fd should be in 'blocking' mode
+ * @param off offset to start reading from in the file;
+ *        Be careful! 'off_t' may have been compiled to be a 
+ *        64-bit variable for MHD, in which case your application
+ *        also has to be compiled using the same options! Read
+ *        the MHD manual for more details.
+ * @return NULL on error (i.e. invalid arguments, out of memory)
+ */
+struct MHD_Response *
+MHD_create_response_from_fd_at_offset (size_t size,
+				       int fd,
+				       off_t offset);
+
+
+/**
+ * Function called after a protocol upgrade response was sent
+ * successfully and the socket should now be controlled by some
+ * protocol other than HTTP.  Note that from this point on, MHD will
+ * consider this connection to be "complete", so it will no longer be
+ * counted as an active connection for the
+ * MHD_OPTION_PER_IP_CONNECTION_LIMIT or the
+ * MHD_OPTION_CONNECTION_LIMIT.  After this function returns, the
+ * MHD_RequestCompletedCallback will be called and all resources of
+ * the connection (except for the socket itself) will be released.
+ *
+ * @param cls closure
+ * @param connection original HTTP connection handle,
+ *                   giving the function a last chance
+ *                   to inspect the original HTTP request
+ * @param con_cls value as set by the last call to the
+ *                MHD_AccessHandlerCallback; will afterwards
+ *                be also given to the MHD_RequestCompletedCallback
+ * @param upgrade_socket TCP socket that was upgraded from HTTP
+ *                to some other protocol.  This function must
+ *                take over the communication and is ultimately
+ *                responsible for closing the socket.
+ */
+typedef void (*MHD_UpgradeHandler)(void *cls,
+				   struct MHD_Connection *connection,
+				   void **con_cls,
+				   int upgrade_socket);
+
+#if 0
+/**
+ * Create a response object that can be used for 101 UPGRADE
+ * responses, for example to implement websockets.  After sending the
+ * response, control over the socket is given to the callback (which
+ * can then, for example, start some bi-directional communication).
+ * If the response is queued for multiple connections, the callback
+ * will be called with a socket for each connection.  The callback
+ * will ONLY be called if the response header was successfully passed
+ * to the OS; if there are communication errors before, the usual MHD
+ * connection error handling code will be performed.
+ *
+ * Setting the correct HTTP code (i.e. MHD_HTTP_SWITCHING_PROTOCOLS)
+ * and setting correct HTTP headers for the upgrade must be done
+ * manually (this way, it is possible to implement most existing
+ * WebSocket version using this API; in fact, this API might be useful
+ * for any protocol switch, not just web sockets).  Note that
+ * draft-ietf-hybi-thewebsocketprotocol-00 cannot be implemented this
+ * way as the header "HTTP/1.1 101 WebSocket Protocol Handshake"
+ * cannot be generated; instead, MHD will always produce "HTTP/1.1 101
+ * Switching Protocols" (if the response 101 is used).
+ *
+ * As usual, the response object can be extended with header
+ * information and then be used any number of times (as long as the
+ * header information is not connection-specific).
+ *
+ * @param upgrade_handler function to call with the 'upgraded' socket
+ * @param upgrade_handler_cls closure for 'upgrade_handler'
+ * @return NULL on error (i.e. invalid arguments, out of memory)
+ */
+struct MHD_Response *
+MHD_create_response_for_upgrade (MHD_UpgradeHandler upgrade_handler,
+				 void *upgrade_handler_cls);
+#endif
 
 /**
  * Destroy a response object and associated resources.  Note that
@@ -1019,6 +1470,7 @@ struct MHD_Response *MHD_create_response_from_data (size_t size,
  * @param response response to destroy
  */
 void MHD_destroy_response (struct MHD_Response *response);
+
 
 /**
  * Add a header line to the response.
@@ -1033,8 +1485,22 @@ int
 MHD_add_response_header (struct MHD_Response *response,
                          const char *header, const char *content);
 
+
 /**
- * Delete a header line from the response.
+ * Add a footer line to the response.
+ *
+ * @param response response to remove a header from
+ * @param footer the footer to delete
+ * @param content value to delete
+ * @return MHD_NO on error (i.e. invalid footer or content format).
+ */
+int
+MHD_add_response_footer (struct MHD_Response *response,
+                         const char *footer, const char *content);
+
+
+/**
+ * Delete a header (or footer) line from the response.
  *
  * @param response response to remove a header from
  * @param header the header to delete
@@ -1046,7 +1512,7 @@ MHD_del_response_header (struct MHD_Response *response,
                          const char *header, const char *content);
 
 /**
- * Get all of the headers added to a response.
+ * Get all of the headers (and footers) added to a response.
  *
  * @param response response to query
  * @param iterator callback to call on each header;
@@ -1060,7 +1526,7 @@ MHD_get_response_headers (struct MHD_Response *response,
 
 
 /**
- * Get a particular header from the response.
+ * Get a particular header (or footer) from the response.
  *
  * @param response response to query
  * @param key which header to get
@@ -1093,13 +1559,12 @@ const char *MHD_get_response_header (struct MHD_Response *response,
  *        Must NOT be NULL.
  * @param cls first argument to ikvi
  * @return  NULL on error (out of memory, unsupported encoding),
-            otherwise a PP handle
+ *          otherwise a PP handle
  */
-struct MHD_PostProcessor *MHD_create_post_processor (struct MHD_Connection
-                                                     *connection,
-                                                     size_t buffer_size,
-                                                     MHD_PostDataIterator
-                                                     iter, void *cls);
+struct MHD_PostProcessor *
+MHD_create_post_processor (struct MHD_Connection *connection,
+			   size_t buffer_size,
+			   MHD_PostDataIterator iter, void *cls);
 
 /**
  * Parse and process POST data.
@@ -1128,24 +1593,134 @@ MHD_post_process (struct MHD_PostProcessor *pp,
  *                problems; it is common to ignore the return
  *                value of this function
  */
-int MHD_destroy_post_processor (struct MHD_PostProcessor *pp);
+int 
+MHD_destroy_post_processor (struct MHD_PostProcessor *pp);
 
 
+/* ********************* Digest Authentication functions *************** */
+
+
+/**
+ * Constant to indicate that the nonce of the provided
+ * authentication code was wrong.
+ */
+#define MHD_INVALID_NONCE -1
+
+
+/**
+ * Get the username from the authorization header sent by the client
+ *
+ * @param connection The MHD connection structure
+ * @return NULL if no username could be found, a pointer
+ * 			to the username if found
+ */
+char *
+MHD_digest_auth_get_username (struct MHD_Connection *connection);
+
+
+/**
+ * Authenticates the authorization header sent by the client
+ *
+ * @param connection The MHD connection structure
+ * @param realm The realm presented to the client
+ * @param username The username needs to be authenticated
+ * @param password The password used in the authentication
+ * @param nonce_timeout The amount of time for a nonce to be
+ * 			invalid in seconds
+ * @return MHD_YES if authenticated, MHD_NO if not,
+ * 			MHD_INVALID_NONCE if nonce is invalid
+ */
+int
+MHD_digest_auth_check (struct MHD_Connection *connection,
+		       const char *realm,
+		       const char *username,
+		       const char *password,
+		       unsigned int nonce_timeout);
+
+
+/**
+ * Queues a response to request authentication from the client
+ *
+ * @param connection The MHD connection structure
+ * @param realm The realm presented to the client
+ * @param opaque string to user for opaque value
+ * @param response reply to send; should contain the "access denied"
+ *        body; note that this function will set the "WWW Authenticate"
+ *        header and that the caller should not do this
+ * @param signal_stale MHD_YES if the nonce is invalid to add
+ * 			'stale=true' to the authentication header
+ * @return MHD_YES on success, MHD_NO otherwise
+ */
+int
+MHD_queue_auth_fail_response (struct MHD_Connection *connection,
+			      const char *realm,
+			      const char *opaque,
+			      struct MHD_Response *response,
+			      int signal_stale);
+
+
+/**
+ * Get the username and password from the basic authorization header sent by the client
+ *
+ * @param connection The MHD connection structure
+ * @param password a pointer for the password
+ * @return NULL if no username could be found, a pointer
+ * 			to the username if found
+ */
+char *
+MHD_basic_auth_get_username_password (struct MHD_Connection *connection,
+				      char** password);
+
+/**
+ * Queues a response to request basic authentication from the client
+ *
+ * @param connection The MHD connection structure
+ * @param realm the realm presented to the client
+ * @return MHD_YES on success, MHD_NO otherwise
+ */
+int
+MHD_queue_basic_auth_fail_response (struct MHD_Connection *connection,
+				    const char *realm,
+				    struct MHD_Response *response);
 
 /* ********************** generic query functions ********************** */
-
 
 /**
  * Information about a connection.
  */
 union MHD_ConnectionInfo
 {
-  enum MHD_GNUTLS_CipherAlgorithm cipher_algorithm;
-  enum MHD_GNUTLS_Protocol protocol;
+
+  /**
+   * Cipher algorithm used, of type "enum gnutls_cipher_algorithm".
+   */
+  int /* enum gnutls_cipher_algorithm */ cipher_algorithm;
+
+  /**
+   * Protocol used, of type "enum gnutls_protocol".
+   */
+  int /* enum gnutls_protocol */ protocol;
+
+  /**
+   * GNUtls session handle, of type "gnutls_session_t".
+   */
+  void * /* gnutls_session_t */ tls_session;
+
+  /**
+   * GNUtls client certificate handle, of type "gnutls_x509_crt_t".
+   */
+  void * /* gnutls_x509_crt_t */ client_cert;
+
   /**
    * Address information for the client.
    */
-  struct sockaddr_in * client_addr;
+  struct sockaddr *client_addr;
+
+  /**
+   * Which daemon manages this connection (useful in case there are many
+   * daemons running).
+   */
+  struct MHD_Daemon *daemon;
 };
 
 /**
@@ -1157,12 +1732,42 @@ union MHD_ConnectionInfo
  * @return NULL if this information is not available
  *         (or if the infoType is unknown)
  */
-const union MHD_ConnectionInfo *MHD_get_connection_info (struct MHD_Connection
-                                                         *connection,
-                                                         enum
-                                                         MHD_ConnectionInfoType
-                                                         infoType, ...);
+const union MHD_ConnectionInfo *
+MHD_get_connection_info (struct MHD_Connection *connection,
+			 enum MHD_ConnectionInfoType infoType, 
+			 ...);
 
+
+/**
+ * MHD connection options.  Given to 'MHD_set_connection_option' to
+ * set custom options for a particular connection.
+ */
+enum MHD_CONNECTION_OPTION
+{
+
+  /**
+   * Set a custom timeout for the given connection.  Specified
+   * as the number of seconds, given as an 'unsigned int'.  Use
+   * zero for no timeout.
+   */
+  MHD_CONNECTION_OPTION_TIMEOUT
+
+};
+
+
+/**
+ * Set a custom option for the given connection, overriding defaults.
+ *
+ * @param connection connection to modify
+ * @param option option to set
+ * @param ... arguments to the option, depending on the option type
+ * @return MHD_YES on success, MHD_NO if setting the option failed
+ */
+int 
+MHD_set_connection_option (struct MHD_Connection *connection,
+			   enum MHD_CONNECTION_OPTION option,
+			   ...);
+			   
 
 /**
  * Information about an MHD daemon.
@@ -1178,6 +1783,11 @@ union MHD_DaemonInfo
    * Size of the mac key (unit??)
    */
   size_t mac_key_size;
+
+  /**
+   * Listen socket file descriptor
+   */
+  int listen_fd;
 };
 
 /**
@@ -1190,16 +1800,19 @@ union MHD_DaemonInfo
  * @return NULL if this information is not available
  *         (or if the infoType is unknown)
  */
-const union MHD_DaemonInfo *MHD_get_daemon_info (struct MHD_Daemon *daemon,
-                                                 enum MHD_DaemonInfoType
-                                                 infoType, ...);
+const union MHD_DaemonInfo *
+MHD_get_daemon_info (struct MHD_Daemon *daemon,
+		     enum MHD_DaemonInfoType infoType, 
+		     ...);
+
 
 /**
  * Obtain the version of this library
  *
- * @return static version string, e.g. "0.4.1"
+ * @return static version string, e.g. "0.9.9"
  */
-const char* MHD_get_version(void);
+const char* 
+MHD_get_version (void);
 
 #if 0                           /* keep Emacsens' auto-indent happy */
 {
