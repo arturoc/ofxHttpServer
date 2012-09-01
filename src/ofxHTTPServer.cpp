@@ -79,7 +79,7 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 
 		if(!filename){
 		 char * aux_data = new char[off+size+1];
-		 memset(aux_data,0,size+1);
+		 memset(aux_data,0,off+size+1);
 		 if(off > 0)
 			memcpy(aux_data,con_info->fields[key].c_str(),off);
 
@@ -355,10 +355,19 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 void ofxHTTPServer::start(unsigned _port, bool threaded) {
 	port = _port;
-	http_daemon = MHD_start_daemon(threaded?MHD_USE_THREAD_PER_CONNECTION:MHD_USE_SELECT_INTERNALLY,
-			_port, NULL, NULL,
-			&answer_to_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED,
-            &request_completed, NULL, MHD_OPTION_END);
+	/*if(threaded){
+		http_daemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY,
+				_port, NULL, NULL,
+				&answer_to_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED,
+	            &request_completed, NULL,
+	            MHD_OPTION_THREAD_POOL_SIZE,100,
+	            MHD_OPTION_END);
+	}else{*/
+		http_daemon = MHD_start_daemon(threaded?MHD_USE_THREAD_PER_CONNECTION:MHD_USE_SELECT_INTERNALLY,
+				_port, NULL, NULL,
+				&answer_to_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED,
+	            &request_completed, NULL, MHD_OPTION_END);
+	//}
 }
 
 void ofxHTTPServer::stop(){
