@@ -88,7 +88,7 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 	  }else{
 			if(con_info->file_fields.find(filename)==con_info->file_fields.end()){
 				con_info->file_fields[filename] = NULL;
-				con_info->file_fields[filename] = fopen ((instance.uploadDir +"/"+ filename).c_str(), "ab");
+				con_info->file_fields[filename] = fopen (string(instance.uploadDir +"/"+ filename).c_str(), "ab");
 				if(con_info->file_fields[filename] == NULL){
 					con_info->file_fields.erase(filename);
 					return MHD_NO;
@@ -274,6 +274,10 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 		ofxHTTPServerResponse response;
 		response.url = strurl;
+		const char * referer = MHD_lookup_connection_value(connection,MHD_HEADER_KIND,MHD_HTTP_HEADER_REFERER);
+		if(referer){
+			response.referer = referer;
+		}
 
 
 		if(strmethod=="GET"){

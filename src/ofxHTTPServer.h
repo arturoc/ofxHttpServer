@@ -20,7 +20,7 @@
 
 #include "microhttpd.h"
 #include "Poco/Condition.h"
-#include <ofMain.h>
+#include "ofMain.h"
 #include <map>
 
 class ofxHTTPServerResponse{
@@ -28,15 +28,16 @@ public:
 	ofxHTTPServerResponse(){
 		errCode=200;
 	}
-	string url;
+	std::string url;
 	ofBuffer response;
 	int errCode;
-	string errStr;
-	string location; // for redirections
-	string contentType;  // for contents different than html or text
+	std::string errStr;
+	std::string location; // for redirections
+	std::string contentType;  // for contents different than html or text
+	std::string referer;
 
-	std::map<string,string> requestFields;
-	std::map<string,string> uploadedFiles;
+	std::map<std::string,std::string> requestFields;
+	std::map<std::string,std::string> uploadedFiles;
 };
 
 class ofxHTTPServerListener{
@@ -59,9 +60,9 @@ public:
 
 	void start(unsigned port = 8888, bool threaded=false);
 	void stop();
-	void setServerRoot(const string & fsroot);
-	void setUploadDir(const string & uploadDir);
-	void setCallbackExtension(const string & cb_extension);
+	void setServerRoot(const std::string & fsroot);
+	void setUploadDir(const std::string & uploadDir);
+	void setCallbackExtension(const std::string & cb_extension);
 	void setMaxNumberClients(unsigned num_clients);
 	void setMaxNumberActiveClients(unsigned num_clients);
 	unsigned getNumberClients();
@@ -79,9 +80,9 @@ private:
 
 	ofxHTTPServer();
 	struct MHD_Daemon *http_daemon;
-	string fsRoot;
-	string uploadDir;
-	string callbackExtension;
+	std::string fsRoot;
+	std::string uploadDir;
+	std::string callbackExtension;
 	bool callbackExtensionSet;
 	unsigned port;
 	unsigned numClients;
@@ -94,7 +95,7 @@ private:
 	static int print_out_key (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 	static int get_get_parameters (void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 
-	static int send_page (struct MHD_Connection *connection, long length, const char* page, int status_code, string contentType="");
+	static int send_page (struct MHD_Connection *connection, long length, const char* page, int status_code, std::string contentType="");
 	static int send_redirect (struct MHD_Connection *connection, const char* location, int status_code);
 
 	static void request_completed (void *cls, struct MHD_Connection *connection, void **con_cls,
