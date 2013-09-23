@@ -7,7 +7,7 @@
 
 
 
-class testApp : public ofBaseApp{
+class testApp : public ofBaseApp, public ofxHTTPServerListener{
 
 	public:
 
@@ -24,6 +24,7 @@ class testApp : public ofBaseApp{
 
 		void getRequest(ofxHTTPServerResponse & response);
 		void postRequest(ofxHTTPServerResponse & response);
+		void fileNotFound(ofxHTTPServerResponse& response){}
 
         ofxHTTPServer * server;
 

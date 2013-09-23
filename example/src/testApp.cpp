@@ -12,8 +12,8 @@ void testApp::setup(){
 	server->setServerRoot("www");		 // folder with files to be served
 	server->setUploadDir("upload");		 // folder to save uploaded files
 	server->setCallbackExtension("of");	 // extension of urls that aren't files but will generate a post or get event
-	ofAddListener(server->getEvent,this,&testApp::getRequest);
-	ofAddListener(server->postEvent,this,&testApp::postRequest);
+	server->setListener(*this);
+
 	server->start(8888);
 }
 
@@ -46,13 +46,6 @@ void testApp::update(){
 		radius[i].x = sin(ofGetElapsedTimef()+(float)(i*i))*100;
 		radius[i].y = cos(ofGetElapsedTimef()-(float)(i*i))*100;
 	}
-
-	if(!imageSaved){
-		image.grabScreen(150,150,300,300);
-		image.saveImage("www/screen.jpg");
-		imageSaved = true;
-	}
-
 	if(postedImgFile!=prevPostedImg){
 		postedImg.loadImage("upload/" + postedImgFile);
 		prevPostedImg = postedImgFile;
@@ -66,7 +59,7 @@ void testApp::draw(){
 	//ofSetPolyMode(OF_POLY_WINDING_ODD);
 	ofBeginShape();
 	for(int i=0; i<20; i++){
-		ofCurveVertex(300+radius[i].x,300+radius[i].y);//,10,10);
+		ofCurveVertex(150+radius[i].x,150+radius[i].y);//,10,10);
 	}
 	ofEndShape(true);
 
@@ -75,6 +68,13 @@ void testApp::draw(){
 		ofDrawBitmapString(postedImgName,550,200);
 		ofSetColor(255,255,255);
 		postedImg.draw(550,220);
+	}
+
+
+	if(!imageSaved){
+		image.grabScreen(0,0,300,300);
+		image.saveImage("www/screen.jpg");
+		imageSaved = true;
 	}
 
 
