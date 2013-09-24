@@ -18,7 +18,10 @@
    #include <sys/socket.h>
 #endif
 
-#include "microhttpd.h"
+extern "C" {
+	#include "microhttpd.h"
+}
+
 #include "Poco/Condition.h"
 #include "ofMain.h"
 #include <map>

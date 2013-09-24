@@ -4,6 +4,7 @@
 //--------------------------------------------------------------
 void testApp::setup(){
 	ofSetVerticalSync(true);
+	ofSetFrameRate(12);
 	ofBackground(255,255,255);
 	image.allocate(400,400,OF_IMAGE_COLOR);
 	imageSaved  = false;
@@ -22,7 +23,7 @@ void testApp::getRequest(ofxHTTPServerResponse & response){
 		response.response="<html> <head> <title>oF http server</title> \
 				<script> \
 				function beginrefresh(){ \
-					setTimeout(\"window.location.reload();\",30); \
+					setTimeout(\"window.location.reload();\",83); \
 				}\
 		window.onload=beginrefresh; \
 		</script>\
