@@ -30,6 +30,7 @@ public:
 
 	map<string,string> fields;
 	map<string,FILE*> file_fields;
+	map<string,string> file_to_path_index;
 	map<string,string> file_to_key_index;
 	int connectiontype;
 	bool connection_complete;
@@ -78,22 +79,27 @@ int ofxHTTPServer::iterate_post (void *coninfo_cls, enum MHD_ValueKind kind, con
 		ofLogVerbose("ofxHttpServer") << ", "  << key << endl;//": " <<data << endl;
 
 		if(!filename){
-		 char * aux_data = new char[off+size+1];
-		 memset(aux_data,0,off+size+1);
-		 if(off > 0)
-			memcpy(aux_data,con_info->fields[key].c_str(),off);
+			 char * aux_data = new char[off+size+1];
+			 memset(aux_data,0,off+size+1);
+			 if(off > 0)
+				memcpy(aux_data,con_info->fields[key].c_str(),off);
 
-		 memcpy(aux_data+off*sizeof(char),data,size);
-		 con_info->fields[key] = aux_data;
-	  }else{
+			 memcpy(aux_data+off*sizeof(char),data,size);
+			 con_info->fields[key] = aux_data;
+		}else{
+			ofLogVerbose("ofxHttpServer") << "ofxHttpServer:" << "received file" << endl;
 			if(con_info->file_fields.find(filename)==con_info->file_fields.end()){
 				con_info->file_fields[filename] = NULL;
-				con_info->file_fields[filename] = fopen (string(instance.uploadDir +"/"+ filename).c_str(), "ab");
+				string uploadFolder(ofFilePath::join(instance.uploadDir,ofGetTimestampString()));
+				ofDirectory (uploadFolder).create();
+				string path = ofFilePath::join(uploadFolder, filename);
+				con_info->file_fields[filename] = fopen (string(path).c_str(), "ab");
 				if(con_info->file_fields[filename] == NULL){
 					con_info->file_fields.erase(filename);
 					return MHD_NO;
 				}
 				con_info->file_to_key_index[filename]=key;
+				con_info->file_to_path_index[filename] = path;
 
 			}
 			if(size>0){
@@ -268,7 +274,9 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 
 	// if the extension of the url is that set to the callback, call the events to generate the response
-	if(instance.callbackExtensionSet && strurl.size()>instance.callbackExtension.size() && strurl.substr(strurl.size()-instance.callbackExtension.size())==instance.callbackExtension){
+	string extension = ofFilePath::getFileExt(strurl);
+	cout << "url extension " << extension << endl;
+	if(instance.callbackExtensionSet && instance.callbackExtensions.find(extension)!=instance.callbackExtensions.end()){
 
 		ofLogVerbose("ofxHttpServer") << method << " serving from callback: " << url << endl;
 
@@ -306,7 +314,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 					  if(it->second!=NULL){
 						  fflush(it->second);
 						  fclose(it->second);
-						  response.uploadedFiles[con_info->file_to_key_index[it->first]]=it->first;
+						  response.uploadedFiles[con_info->file_to_key_index[it->first]]=con_info->file_to_path_index[it->first];
 					  }
 				}
 				//ofNotifyEvent(instance.postEvent,response);
@@ -391,9 +399,10 @@ void ofxHTTPServer::setUploadDir(const string & uploaddir){
 	ofLogNotice("ofxHttpServer", "uploading posted files to " + uploadDir);
 }
 
-void ofxHTTPServer::setCallbackExtension(const string & cb_extension){
+void ofxHTTPServer::setCallbackExtensions(const string & cb_extensions){
 	callbackExtensionSet = true;
-	callbackExtension = cb_extension;
+	vector<string> extensions = ofSplitString(cb_extensions," ");
+	callbackExtensions.insert(extensions.begin(),extensions.end());
 }
 
 

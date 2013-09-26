@@ -9,6 +9,7 @@
 #define OFXHTTPSERVER_H_
 
 #include <cstdarg>
+#include <set>
 
 #if defined( __WIN32__ ) || defined( _WIN32 )
    #define MHD_PLATFORM_H
@@ -65,7 +66,7 @@ public:
 	void stop();
 	void setServerRoot(const std::string & fsroot);
 	void setUploadDir(const std::string & uploadDir);
-	void setCallbackExtension(const std::string & cb_extension);
+	void setCallbackExtensions(const std::string & cb_extensions);
 	void setMaxNumberClients(unsigned num_clients);
 	void setMaxNumberActiveClients(unsigned num_clients);
 	unsigned getNumberClients();
@@ -85,7 +86,7 @@ private:
 	struct MHD_Daemon *http_daemon;
 	std::string fsRoot;
 	std::string uploadDir;
-	std::string callbackExtension;
+	std::set<std::string> callbackExtensions;
 	bool callbackExtensionSet;
 	unsigned port;
 	unsigned numClients;
