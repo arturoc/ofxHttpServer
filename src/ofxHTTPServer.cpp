@@ -275,7 +275,6 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 	// if the extension of the url is that set to the callback, call the events to generate the response
 	string extension = ofFilePath::getFileExt(strurl);
-	cout << "url extension " << extension << endl;
 	if(instance.callbackExtensionSet && instance.callbackExtensions.find(extension)!=instance.callbackExtensions.end()){
 
 		ofLogVerbose("ofxHttpServer") << method << " serving from callback: " << url << endl;
@@ -331,6 +330,7 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 	// if the extension of the url is any other try to serve a file
 	}else{
 		ofLogVerbose("ofxHttpServer") << method << " serving from filesystem: " << url << endl;
+		if(strurl=="/") strurl = "/index.html";
 
 		ofFile file(instance.fsRoot + url,ofFile::ReadOnly,true);
 		if(!file.exists()){
