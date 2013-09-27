@@ -329,10 +329,10 @@ int ofxHTTPServer::answer_to_connection(void *cls,
 
 	// if the extension of the url is any other try to serve a file
 	}else{
-		ofLogVerbose("ofxHttpServer") << method << " serving from filesystem: " << url << endl;
+		ofLogVerbose("ofxHttpServer") << method << " serving from filesystem: " << strurl << endl;
 		if(strurl=="/") strurl = "/index.html";
 
-		ofFile file(instance.fsRoot + url,ofFile::ReadOnly,true);
+		ofFile file(instance.fsRoot + strurl,ofFile::ReadOnly,true);
 		if(!file.exists()){
 			ofxHTTPServerResponse response;
 			response.errCode = 404;
